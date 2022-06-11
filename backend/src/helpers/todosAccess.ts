@@ -1,13 +1,13 @@
-import * as AWS from 'aws-sdk'
-import * as AWSXRay from 'aws-xray-sdk'
-import { DocumentClient } from 'aws-sdk/clients/dynamodb'
-import { createLogger } from '../utils/logger'
-import { TodoItem } from '../models/TodoItem'
-import { TodoUpdate } from '../models/TodoUpdate'
+import * as AWS from "aws-sdk";
+import * as AWSXRay from "aws-xray-sdk";
+import { DocumentClient } from "aws-sdk/clients/dynamodb";
+import { createLogger } from "../utils/logger";
+import { TodoItem } from "../models/TodoItem";
+import { TodoUpdate } from "../models/TodoUpdate";
 
-const XAWS = AWSXRay.captureAWS(AWS)
+const XAWS = AWSXRay.captureAWS(AWS);
 
-const logger = createLogger('Todos data access')
+const logger = createLogger("Todos data access");
 
 // TODO: Implement the dataLayer logic
 export class TodosAccess {
@@ -17,35 +17,38 @@ export class TodosAccess {
     private readonly todoCreatedIndex = process.env.TODOS_CREATED_AT_INDEX
   ) {}
 
-  async getAllTodos(userId: string): Promise<TodoItem[]> {
-    logger.info('Getting all todos')
+  async getAllTodos(userId: string, limit: number, nextKey: any) {
+    logger.info("Getting all todos");
 
     const result = await this.docClient
       .query({
         TableName: this.todosTable,
         IndexName: this.todoCreatedIndex,
-        KeyConditionExpression: 'userId = :pk',
+        Limit: limit,
+        ExclusiveStartKey: nextKey,
+        KeyConditionExpression: "userId = :pk",
         ExpressionAttributeValues: {
-          ':pk': userId
-        }
+          ":pk": userId,
+        },
       })
-      .promise()
+      .promise();
 
-    const items = result.Items
-    return items as TodoItem[]
+    const items = result.Items;
+
+    return { items, nextKey: encodeNextKey(result.LastEvaluatedKey) };
   }
 
   async createTodo(todoItem: TodoItem): Promise<TodoItem> {
-    logger.info('Create new todo')
+    logger.info("Create new todo");
 
     await this.docClient
       .put({
         TableName: this.todosTable,
-        Item: todoItem
+        Item: todoItem,
       })
-      .promise()
+      .promise();
 
-    return todoItem
+    return todoItem;
   }
 
   async updateTodo(
@@ -53,33 +56,33 @@ export class TodosAccess {
     userId: String,
     updateTodoItem: TodoUpdate
   ): Promise<TodoUpdate> {
-    logger.info('Update todo')
+    logger.info("Update todo");
 
     await this.docClient
       .update({
         TableName: this.todosTable,
         Key: {
           todoId: todoId,
-          userId: userId
+          userId: userId,
         },
         UpdateExpression:
-          'set #todo_name = :name, dueDate = :dueDate, done = :done',
+          "set #todo_name = :name, dueDate = :dueDate, done = :done",
         ExpressionAttributeNames: {
-          '#todo_name': 'name'
+          "#todo_name": "name",
         },
         ExpressionAttributeValues: {
-          ':name': updateTodoItem.name,
-          ':dueDate': updateTodoItem.dueDate,
-          ':done': updateTodoItem.done
-        }
+          ":name": updateTodoItem.name,
+          ":dueDate": updateTodoItem.dueDate,
+          ":done": updateTodoItem.done,
+        },
       })
-      .promise()
+      .promise();
 
-    return updateTodoItem
+    return updateTodoItem;
   }
 
   async deleteTodo(todoId: String, userId: String) {
-    logger.info('Delete todo')
+    logger.info("Delete todo");
 
     await this.docClient
       .delete(
@@ -87,28 +90,35 @@ export class TodosAccess {
           TableName: this.todosTable,
           Key: {
             todoId: todoId,
-            userId: userId
-          }
+            userId: userId,
+          },
         },
         (err) => {
           if (err) {
-            throw new Error('')
+            throw new Error("");
           }
         }
       )
-      .promise()
+      .promise();
   }
 }
 
 function createDynamoDBClient() {
   if (process.env.IS_OFFLINE) {
-    logger.info('Creating a local DynamoDB instance')
+    logger.info("Creating a local DynamoDB instance");
 
     return new XAWS.DynamoDB.DocumentClient({
-      region: 'localhost',
-      endpoint: 'http://localhost:8000'
-    })
+      region: "localhost",
+      endpoint: "http://localhost:8000",
+    });
   }
 
-  return new XAWS.DynamoDB.DocumentClient()
+  return new XAWS.DynamoDB.DocumentClient();
+}
+function encodeNextKey(lastEvaluatedKey) {
+  if (!lastEvaluatedKey) {
+    return null;
+  }
+
+  return encodeURIComponent(JSON.stringify(lastEvaluatedKey));
 }

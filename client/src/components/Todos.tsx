@@ -27,13 +27,17 @@ interface TodosState {
   todos: Todo[]
   newTodoName: string
   loadingTodos: boolean
+  nextKey: any
+  token: string
 }
 
-export class Todos extends React.PureComponent<TodosProps, TodosState> {
+export class Todos extends React.Component<TodosProps, TodosState> {
   state: TodosState = {
+    token: '',
     todos: [],
     newTodoName: '',
-    loadingTodos: true
+    loadingTodos: true,
+    nextKey: null
   }
 
   handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,23 +95,39 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
 
   async componentDidMount() {
     try {
-      const todos = await getTodos(this.props.auth.getIdToken())
+      const token = this.props.auth.getIdToken()
+      const response = await getTodos(token, this.state.nextKey)
       this.setState({
-        todos,
-        loadingTodos: false
+        token,
+        todos: response.items,
+        loadingTodos: false,
+        nextKey: response.nextKey
       })
     } catch (e) {
       console.log(e)
     }
   }
-
+  async loadMore() {
+    try {
+      console.log(this.state.todos)
+      const response = await getTodos(this.state.token, this.state.nextKey)
+      let newTodos = [...this.state.todos]
+      newTodos = newTodos.concat(response.items)
+      const newNextKey = response.nextKey
+      this.setState({
+        todos: newTodos,
+        loadingTodos: false,
+        nextKey: newNextKey
+      })
+    } catch (error) {
+      console.log(error)
+    }
+  }
   render() {
     return (
       <div>
         <Header as="h1">TODOs</Header>
-
         {this.renderCreateTodoInput()}
-
         {this.renderTodos()}
       </div>
     )
@@ -201,6 +221,11 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
             </Grid.Row>
           )
         })}
+        {this.state.nextKey && (
+          <Button icon color="green" onClick={() => this.loadMore()}>
+            More
+          </Button>
+        )}
       </Grid>
     )
   }
